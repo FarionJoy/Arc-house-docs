@@ -1,0 +1,500 @@
+import { useState } from "react";
+
+const sidebar = [
+  { section: "Getting Started", items: ["Introduction", "Installation", "Project Structure"] },
+  { section: "ADRs", items: ["ADR-001: Next.js", "ADR-002: PostgreSQL", "ADR-003: Monorepo"] },
+  { section: "API Reference", items: ["Authentication", "Projects", "Media", "Users"] },
+  { section: "Onboarding", items: ["Dev Setup", "Git Workflow", "Deploy Guide"] },
+];
+
+const docs = {
+  Introduction: {
+    title: "Introduction",
+    badge: "Guide",
+    content: `Arc House platform is a set of services powering the archouse.ua website, internal CMS, and client portal.
+
+This documentation covers architecture decisions, API references, and guides for developers joining the project.
+
+**Repositories**
+
+| Repo | Purpose |
+| arc-house-web | Public Next.js website |
+| arc-house-api | REST API (Node.js + PostgreSQL) |
+| arc-house-cms | Headless CMS (Payload) |
+| arc-house-infra | Terraform + Docker configs |
+
+**Tech stack:** Next.js 14, Node.js 20, PostgreSQL 15, Payload CMS, Terraform, GitHub Actions.`,
+  },
+  Installation: {
+    title: "Installation",
+    badge: "Guide",
+    content: `**Requirements**
+
+- Node.js 20+
+- pnpm 8+
+- Docker (for local DB)
+- Git
+
+**Clone and install**
+
+\`\`\`bash
+git clone https://github.com/arc-house/arc-house-web
+cd arc-house-web
+pnpm install
+\`\`\`
+
+**Environment**
+
+\`\`\`bash
+cp .env.example .env.local
+# Fill in DATABASE_URL, NEXT_PUBLIC_API_URL, CMS_SECRET
+\`\`\`
+
+**Run dev server**
+
+\`\`\`bash
+pnpm dev        # starts on localhost:3000
+pnpm db:up      # starts PostgreSQL via Docker
+\`\`\``,
+  },
+  "Project Structure": {
+    title: "Project Structure",
+    badge: "Guide",
+    content: `\`\`\`
+arc-house-web/
+├── app/
+│   ├── (site)/          # Public pages
+│   ├── (admin)/         # Dashboard routes
+│   └── api/             # Route handlers
+├── components/
+│   ├── ui/              # Base components
+│   └── blocks/          # Page sections
+├── lib/
+│   ├── api.ts           # API client
+│   └── utils.ts
+├── public/
+└── styles/
+\`\`\`
+
+Pages follow Next.js App Router conventions. Shared UI components live in \`arc-house-ui\` and are imported as \`@arc-house/ui\`.`,
+  },
+  "ADR-001: Next.js": {
+    title: "ADR-001: Use Next.js for the public website",
+    badge: "ADR",
+    content: `**Status:** Accepted  
+**Date:** 2024-01-15
+
+**Context**
+
+We needed a React framework for the public website with SSR, good SEO support, and image optimisation built in.
+
+**Decision**
+
+Use Next.js 14 with App Router.
+
+**Reasons**
+
+- App Router enables per-route caching and streaming
+- \`next/image\` handles responsive images with minimal config
+- Vercel deployment is zero-config
+- Strong TypeScript support out of the box
+
+**Consequences**
+
+- Team must learn App Router conventions (layouts, server components)
+- Vendor tie-in with Vercel for optimal performance`,
+  },
+  "ADR-002: PostgreSQL": {
+    title: "ADR-002: PostgreSQL as primary database",
+    badge: "ADR",
+    content: `**Status:** Accepted  
+**Date:** 2024-01-20
+
+**Context**
+
+The API needs relational storage for projects, users, and media metadata.
+
+**Decision**
+
+Use PostgreSQL 15 with Drizzle ORM.
+
+**Reasons**
+
+- Relational model fits our data well
+- Drizzle provides type-safe queries without heavy abstraction
+- PostgreSQL JSON columns handle flexible project metadata
+- Familiar to the team
+
+**Consequences**
+
+- Requires migration management (Drizzle Kit)
+- Need to provision and back up a managed PG instance (Railway or Supabase)`,
+  },
+  "ADR-003: Monorepo": {
+    title: "ADR-003: Monorepo with pnpm workspaces",
+    badge: "ADR",
+    content: `**Status:** Accepted  
+**Date:** 2024-02-01
+
+**Context**
+
+Multiple packages (web, api, ui, config) share code and need coordinated releases.
+
+**Decision**
+
+Use a pnpm workspace monorepo.
+
+**Reasons**
+
+- Single \`pnpm install\` bootstraps all packages
+- Shared \`arc-house-config\` (ESLint, TS config) without publishing
+- Turborepo for parallel task running and caching
+
+**Consequences**
+
+- Developers need pnpm (not npm/yarn)
+- CI pipeline must cache \`.pnpm-store\``,
+  },
+  Authentication: {
+    title: "Authentication",
+    badge: "API",
+    content: `Base URL: \`https://api.archouse.ua/v1\`
+
+All protected routes require a Bearer token in the Authorization header.
+
+**POST /auth/login**
+
+\`\`\`http
+POST /auth/login
+Content-Type: application/json
+
+{
+  "email": "user@archouse.ua",
+  "password": "••••••••"
+}
+\`\`\`
+
+Response \`200\`:
+\`\`\`json
+{
+  "token": "eyJhbGciOiJIUzI1NiJ9...",
+  "expiresIn": 86400
+}
+\`\`\`
+
+**POST /auth/refresh**
+
+\`\`\`http
+POST /auth/refresh
+Authorization: Bearer <token>
+\`\`\`
+
+Returns a new token. Tokens expire after 24 hours.`,
+  },
+  Projects: {
+    title: "Projects",
+    badge: "API",
+    content: `**GET /projects**
+
+Returns all published projects.
+
+\`\`\`http
+GET /projects?category=residential&limit=10
+\`\`\`
+
+Response:
+\`\`\`json
+{
+  "data": [
+    {
+      "id": "uuid",
+      "title": "Pavilion Nord",
+      "category": "residential",
+      "year": 2024,
+      "location": "Kyiv, UA",
+      "published": true
+    }
+  ],
+  "total": 48
+}
+\`\`\`
+
+**GET /projects/:id**
+
+Returns a single project with full details and media references.
+
+**POST /projects** *(admin)*
+
+Requires \`role: editor\` or \`role: admin\`.`,
+  },
+  Media: {
+    title: "Media",
+    badge: "API",
+    content: `**POST /media/upload**
+
+Multipart upload. Max file size: 20 MB. Accepted: \`jpg\`, \`png\`, \`webp\`.
+
+\`\`\`http
+POST /media/upload
+Authorization: Bearer <token>
+Content-Type: multipart/form-data
+
+file=@photo.jpg
+\`\`\`
+
+Response:
+\`\`\`json
+{
+  "id": "uuid",
+  "url": "https://cdn.archouse.ua/media/uuid.webp",
+  "width": 2400,
+  "height": 1600
+}
+\`\`\`
+
+Images are automatically converted to WebP and stored on CDN.`,
+  },
+  Users: {
+    title: "Users",
+    badge: "API",
+    content: `**GET /users/me**
+
+Returns the current authenticated user.
+
+\`\`\`json
+{
+  "id": "uuid",
+  "email": "user@archouse.ua",
+  "role": "editor",
+  "createdAt": "2024-01-15T10:00:00Z"
+}
+\`\`\`
+
+**Roles**
+
+| Role | Permissions |
+| viewer | Read published content |
+| editor | Create and edit projects, upload media |
+| admin | All permissions, manage users |`,
+  },
+  "Dev Setup": {
+    title: "Dev Setup",
+    badge: "Onboarding",
+    content: `Welcome to Arc House! Follow these steps to get set up.
+
+**1. Access**
+
+Ask @dmytro on Slack for:
+- GitHub org invite (arc-house)
+- 1Password vault access
+- Vercel team invite
+
+**2. Clone repos**
+
+\`\`\`bash
+gh repo clone arc-house/arc-house-web
+gh repo clone arc-house/arc-house-api
+\`\`\`
+
+**3. Local environment**
+
+Copy \`.env.example\` files and fill in values from 1Password → *Dev Secrets* vault.
+
+**4. Run everything**
+
+\`\`\`bash
+pnpm install && pnpm dev
+\`\`\`
+
+Web runs on :3000, API on :4000, CMS on :4001.`,
+  },
+  "Git Workflow": {
+    title: "Git Workflow",
+    badge: "Onboarding",
+    content: `We follow trunk-based development with short-lived feature branches.
+
+**Branch naming**
+
+\`\`\`
+feat/add-project-gallery
+fix/contact-form-validation
+chore/update-dependencies
+\`\`\`
+
+**Commit format (Conventional Commits)**
+
+\`\`\`
+feat: add project filter by category
+fix: correct image aspect ratio on mobile
+docs: update API auth section
+\`\`\`
+
+**PR rules**
+
+- At least 1 review required before merge
+- CI must pass (lint, typecheck, tests)
+- Squash merge into \`main\`
+- Delete branch after merge
+
+\`main\` deploys to production automatically via GitHub Actions.`,
+  },
+  "Deploy Guide": {
+    title: "Deploy Guide",
+    badge: "Onboarding",
+    content: `**Production deploys**
+
+Merging to \`main\` triggers automatic deploy via GitHub Actions → Vercel (web) and Railway (api).
+
+**Manual deploy**
+
+\`\`\`bash
+vercel --prod          # web
+railway up             # api
+\`\`\`
+
+**Environment variables**
+
+Managed in Vercel and Railway dashboards. Never commit secrets. Use 1Password for sharing.
+
+**Rollback**
+
+In Vercel dashboard → Deployments → select previous → Promote to Production.
+
+For the API, Railway keeps the last 5 deploys. Rollback via dashboard or:
+
+\`\`\`bash
+railway rollback
+\`\`\``,
+  },
+};
+
+const badgeColors = {
+  Guide: { bg: "#1a2e1a", color: "#6dbf6d" },
+  ADR: { bg: "#1a1a2e", color: "#7a8fff" },
+  API: { bg: "#2e1a1a", color: "#e07a5f" },
+  Onboarding: { bg: "#2e251a", color: "#d4a85a" },
+};
+
+function renderContent(text) {
+  const lines = text.split("\n");
+  const out = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Code block
+    if (line.startsWith("```")) {
+      const lang = line.slice(3);
+      const code = [];
+      i++;
+      while (i < lines.length && !lines[i].startsWith("```")) { code.push(lines[i]); i++; }
+      out.push(
+        <pre key={i} style={{ background: "#111", border: "1px solid #222", borderRadius: 6, padding: "14px 18px", overflowX: "auto", margin: "16px 0" }}>
+          <code style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, color: "#b0bec5", lineHeight: 1.65 }}>{code.join("\n")}</code>
+        </pre>
+      );
+      i++;
+      continue;
+    }
+
+    // Table
+    if (line.startsWith("|")) {
+      const rows = [];
+      while (i < lines.length && lines[i].startsWith("|")) {
+        if (!lines[i].includes("---")) rows.push(lines[i].split("|").filter(Boolean).map(c => c.trim()));
+        i++;
+      }
+      out.push(
+        <table key={i} style={{ width: "100%", borderCollapse: "collapse", margin: "16px 0", fontSize: 14 }}>
+          <thead>
+            <tr>{rows[0]?.map((c, j) => <th key={j} style={{ textAlign: "left", padding: "8px 12px", borderBottom: "1px solid #222", color: "#888", fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 400 }}>{c}</th>)}</tr>
+          </thead>
+          <tbody>
+            {rows.slice(1).map((r, j) => (
+              <tr key={j}>{r.map((c, k) => <td key={k} style={{ padding: "8px 12px", borderBottom: "1px solid #1a1a1a", color: "#ccc", fontSize: 14 }}>{c}</td>)}</tr>
+            ))}
+          </tbody>
+        </table>
+      );
+      continue;
+    }
+
+    // Heading
+    if (line.startsWith("**") && line.endsWith("**") && !line.slice(2, -2).includes("**")) {
+      out.push(<h3 key={i} style={{ color: "#eee", fontWeight: 600, fontSize: 15, margin: "28px 0 8px", fontFamily: "inherit" }}>{line.slice(2, -2)}</h3>);
+      i++; continue;
+    }
+
+    // Paragraph with inline bold
+    if (line.trim()) {
+      const parts = line.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).map((p, j) => {
+        if (p.startsWith("**") && p.endsWith("**")) return <strong key={j} style={{ color: "#eee", fontWeight: 600 }}>{p.slice(2, -2)}</strong>;
+        if (p.startsWith("`") && p.endsWith("`")) return <code key={j} style={{ background: "#1a1a1a", color: "#e07a5f", padding: "1px 6px", borderRadius: 3, fontSize: 13, fontFamily: "'DM Mono', monospace" }}>{p.slice(1, -1)}</code>;
+        return p;
+      });
+      out.push(<p key={i} style={{ color: "#999", lineHeight: 1.75, margin: "6px 0", fontSize: 15 }}>{parts}</p>);
+    } else {
+      out.push(<div key={i} style={{ height: 8 }} />);
+    }
+    i++;
+  }
+  return out;
+}
+
+export default function Docs() {
+  const [active, setActive] = useState("Introduction");
+  const doc = docs[active];
+
+  return (
+    <div style={{ display: "flex", height: "100vh", background: "#0d0d0d", fontFamily: "'Inter', system-ui, sans-serif", color: "#ccc", overflow: "hidden" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: #222; border-radius: 2px; }
+      `}</style>
+
+      {/* Sidebar */}
+      <aside style={{ width: 220, borderRight: "1px solid #1a1a1a", display: "flex", flexDirection: "column", flexShrink: 0 }}>
+        <div style={{ padding: "20px 18px 16px", borderBottom: "1px solid #1a1a1a" }}>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: "#555", letterSpacing: "0.12em", marginBottom: 4 }}>ARC·HOUSE</div>
+          <div style={{ fontSize: 13, color: "#666" }}>docs</div>
+        </div>
+        <nav style={{ flex: 1, overflowY: "auto", padding: "12px 0" }}>
+          {sidebar.map(s => (
+            <div key={s.section} style={{ marginBottom: 4 }}>
+              <div style={{ padding: "6px 18px", fontFamily: "'DM Mono', monospace", fontSize: 10, color: "#444", letterSpacing: "0.14em", textTransform: "uppercase" }}>{s.section}</div>
+              {s.items.map(item => (
+                <button key={item} onClick={() => setActive(item)} style={{
+                  display: "block", width: "100%", textAlign: "left",
+                  padding: "7px 18px", background: active === item ? "#161616" : "none",
+                  border: "none", borderLeft: active === item ? "2px solid #C8A96E" : "2px solid transparent",
+                  color: active === item ? "#e8e0d0" : "#555",
+                  fontSize: 13, cursor: "pointer", transition: "color 0.15s",
+                }}>{item}</button>
+              ))}
+            </div>
+          ))}
+        </nav>
+      </aside>
+
+      {/* Content */}
+      <main style={{ flex: 1, overflowY: "auto", padding: "48px 56px" }}>
+        <div style={{ maxWidth: 720 }}>
+          {doc && (
+            <>
+              {(() => { const b = badgeColors[doc.badge]; return (
+                <span style={{ background: b.bg, color: b.color, fontFamily: "'DM Mono', monospace", fontSize: 10, letterSpacing: "0.12em", padding: "3px 8px", borderRadius: 3, textTransform: "uppercase" }}>{doc.badge}</span>
+              ); })()}
+              <h1 style={{ color: "#eee", fontSize: 26, fontWeight: 600, margin: "14px 0 28px", lineHeight: 1.25 }}>{doc.title}</h1>
+              <div style={{ borderTop: "1px solid #1a1a1a", paddingTop: 28 }}>
+                {renderContent(doc.content)}
+              </div>
+            </>
+          )}
+        </div>
+      </main>
+    </div>
+  );
+}
